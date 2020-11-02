@@ -12,7 +12,7 @@ namespace Petersilie.ManagementTools.TinyTcp
     /// <summary>
     /// A lightweight server that listens for TCP packets.
     /// </summary>
-    public class TinyServer
+    public class TinyServer : IDisposable
     {
         /// <summary>
         /// IPv4 address of the socket.
@@ -25,6 +25,10 @@ namespace Petersilie.ManagementTools.TinyTcp
 
         // Listener for receiving data from clients.
         private TcpListener _tinyServer = null;
+
+        // Thread for accepting connections.
+        private Thread _acceptLoop = null;
+
 
         private event EventHandler<TcpDataReceivedEventArgs> onDataReceived;
         /// <summary>
@@ -71,6 +75,48 @@ namespace Petersilie.ManagementTools.TinyTcp
         protected virtual void OnClientLost(EventArgs e)
         {
             onClientLost?.Invoke(this, e);
+        }
+
+
+        private event EventHandler<EventArgs> onDisposing;
+        /// <summary>
+        /// Raised when the server is disposing.
+        /// </summary>
+        public event EventHandler<EventArgs> Disposing
+        {
+            add {
+                onDisposing += value;
+            }
+            remove {
+                onDisposing -= value;
+            }
+        }
+
+        /// <summary>
+        /// Invokes the Disposing event.
+        /// </summary>
+        /// <param name="e"></param>
+        protected virtual void OnDisposing(EventArgs e)
+        {
+            onDisposing?.Invoke(this, e);
+        }
+
+
+        private event EventHandler<EventArgs> onDisposed;
+        public event EventHandler<EventArgs> Disposed
+        {
+            add {
+                onDisposed += value;
+            }
+            remove {
+                onDisposed -= value;
+            }
+        }
+
+
+        protected virtual void OnDisposed(EventArgs e)
+        {
+            onDisposed?.Invoke(this, e);
         }
 
 
@@ -134,10 +180,8 @@ namespace Petersilie.ManagementTools.TinyTcp
         }
 
 
-        /// <summary>
-        /// Start listening for incoming connections and messages.
-        /// </summary>
-        public void Start()
+        // Loop for accepting client connections.
+        private void AcceptLoopThreadstart()
         {
             try
             {
@@ -150,6 +194,41 @@ namespace Petersilie.ManagementTools.TinyTcp
             catch (SocketException socketEx) {                
                 _tinyServer.Stop();
                 throw new SocketException(socketEx.ErrorCode);
+            }
+        }
+
+
+        /// <summary>
+        /// Start listening for incoming connections and messages.
+        /// </summary>
+        public void Start()
+        {
+            Stop();
+            _acceptLoop = new Thread(
+                new ThreadStart(AcceptLoopThreadstart));
+
+            _acceptLoop.Start();
+        }
+
+
+        public void Stop()
+        {
+            if (null != _acceptLoop) {
+                if (ThreadState.Running == _acceptLoop.ThreadState) {
+                    try {
+                        _acceptLoop.Join(500);
+                        if (_acceptLoop.IsAlive) {
+                            try {
+                                _acceptLoop.Abort();
+                            } catch { }
+                        }
+                        _acceptLoop = null;
+                    }
+                    catch { }
+                }
+                else {
+                    _acceptLoop = null;
+                }
             }
         }
 
@@ -347,5 +426,25 @@ namespace Petersilie.ManagementTools.TinyTcp
         }
 
 
+        ~TinyServer() { Dispose(false); }
+        public void Dispose() { Dispose(true); }
+        private void Dispose(bool disposing)
+        {
+            OnDisposing(EventArgs.Empty);
+
+            if (disposing) {
+                GC.SuppressFinalize(this);
+            }
+
+            Stop();
+            if (null != _tinyServer) {
+                try {
+                    _tinyServer.Stop();
+                    _tinyServer = null;
+                } catch { }
+            }
+
+            OnDisposed(EventArgs.Empty);
+        }
     }
 }
