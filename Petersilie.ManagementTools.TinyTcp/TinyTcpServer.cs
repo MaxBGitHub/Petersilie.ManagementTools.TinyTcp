@@ -14,6 +14,8 @@ namespace Petersilie.ManagementTools.TinyTcp
     /// </summary>
     public class TinyTcpServer : IDisposable
     {
+        #region Public properties
+
         /// <summary>
         /// IPv4 address of the socket.
         /// </summary>
@@ -23,12 +25,24 @@ namespace Petersilie.ManagementTools.TinyTcp
         /// </summary>
         public int Port { get; private set; }
 
+        #endregion
+
+
+        #region Private properties
+
         // Listener for receiving data from clients.
         private TcpListener _tinyServer = null;
 
         // Thread for accepting connections.
         private Thread _acceptLoop = null;
 
+        // Syncs the calls to EndAcceptClient(IAsyncResult).
+        private ManualResetEvent _waiter = new ManualResetEvent(false);
+
+        #endregion
+
+
+        #region Custom events
 
         private event EventHandler<TcpDataEventArgs> onDataReceived;
         /// <summary>
@@ -125,10 +139,17 @@ namespace Petersilie.ManagementTools.TinyTcp
             onDisposed?.Invoke(this, e);
         }
 
+        #endregion
 
-        private ManualResetEvent _waiter = new ManualResetEvent(false);
 
-        private void EndAcceptClient(IAsyncResult ar)
+        #region Client polling / processing
+
+        /// <summary>
+        /// Closes a client connection and raises events depending
+        /// on various object states.
+        /// </summary>
+        /// <param name="ar"></param>
+        protected virtual void EndAcceptClient(IAsyncResult ar)
         {
             // Stores Exception that might occur.
             Exception ex = null;
@@ -198,7 +219,9 @@ namespace Petersilie.ManagementTools.TinyTcp
             {
                 if (null != ex) {
                     OnDataDropped(new TcpDataEventArgs(stateObj, ex));
-                }
+                } /* Exception was caught. */
+
+                // Allow next call of EndAcceptClient().
                 _waiter.Set();
             }
         }
@@ -211,10 +234,15 @@ namespace Petersilie.ManagementTools.TinyTcp
             try
             {
                 while (true) {
+                    // Start polling
                     _waiter.Reset();
+                    // Create state object for async callback of client.
                     var stateObj = new CallbackStateObject(_tinyServer, null);
+                    // Begin accepting client communication.
                     _tinyServer.BeginAcceptTcpClient(EndAcceptClient, stateObj);
+                    // Wait until client is processed.
                     _waiter.WaitOne();
+
                 } /* Endless loop to connect all clients knocking. */
             }
             catch (SocketException socketEx) {                
@@ -223,6 +251,10 @@ namespace Petersilie.ManagementTools.TinyTcp
             }
         }
 
+        #endregion
+
+
+        #region Start / Stop server
 
         /// <summary>
         /// Start accepting clients.
@@ -272,6 +304,10 @@ namespace Petersilie.ManagementTools.TinyTcp
             }
         }
 
+        #endregion
+
+
+        #region Server initialization
 
         /* ==============================
         ** =    InitServer() Function   =
@@ -339,6 +375,10 @@ namespace Petersilie.ManagementTools.TinyTcp
             return 0;
         }
 
+        #endregion
+
+
+        #region Constructor
 
         /// <summary>
         /// Creates a new TinyServer instance on local host 127.0.0.1
@@ -511,6 +551,10 @@ namespace Petersilie.ManagementTools.TinyTcp
             }
         }
 
+        #endregion
+
+
+        #region IDisposable implementation
 
         /// <summary>
         /// Destructor.
@@ -544,5 +588,7 @@ namespace Petersilie.ManagementTools.TinyTcp
                 } catch { }
             }            
         }
+
+        #endregion
     }
 }
