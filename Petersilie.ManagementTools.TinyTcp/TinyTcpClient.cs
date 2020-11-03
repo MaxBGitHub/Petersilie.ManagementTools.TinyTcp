@@ -11,7 +11,7 @@ namespace Petersilie.ManagementTools.TinyTcp
     /// <summary>
     /// A lightweight client that sends data to a server over TCP.
     /// </summary>
-    public class TinyClient
+    public class TinyTcpClient
     {
         /// <summary>
         /// IPv4 address of the server.
@@ -66,7 +66,8 @@ namespace Petersilie.ManagementTools.TinyTcp
                     outStream.Write(data, 0, data.Length);
                 } /* Sanity check to make sure we are connected. */
             }
-            catch (SocketException) {
+            catch (SocketException e) {
+                Console.WriteLine(e.Message);
                 OnConnectionLost(EventArgs.Empty);
             } /* Client could not connect to server. */
             finally
@@ -96,7 +97,7 @@ namespace Petersilie.ManagementTools.TinyTcp
         /// <param name="serverIp">The IPv4 address of the server.</param>
         /// <param name="serverPort">The port on which the 
         /// server can be reached.</param>
-        public TinyClient(string serverIp, int serverPort)
+        public TinyTcpClient(string serverIp, int serverPort)
         {
             IPAddress address;
             if ( !(IPUtil.IsValid(serverIp, out address)) ) {

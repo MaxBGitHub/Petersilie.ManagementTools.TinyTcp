@@ -12,7 +12,7 @@ namespace Petersilie.ManagementTools.TinyTcp
     /// <summary>
     /// A lightweight server that listens for TCP packets.
     /// </summary>
-    public class TinyServer : IDisposable
+    public class TinyTcpServer : IDisposable
     {
         /// <summary>
         /// IPv4 address of the socket.
@@ -30,11 +30,11 @@ namespace Petersilie.ManagementTools.TinyTcp
         private Thread _acceptLoop = null;
 
 
-        private event EventHandler<TcpDataReceivedEventArgs> onDataReceived;
+        private event EventHandler<TcpDataEventArgs> onDataReceived;
         /// <summary>
         /// Raised when the server receives a message from a client.
         /// </summary>
-        public event EventHandler<TcpDataReceivedEventArgs> DataReceived
+        public event EventHandler<TcpDataEventArgs> DataReceived
         {
             add {
                 onDataReceived += value;
@@ -48,33 +48,33 @@ namespace Petersilie.ManagementTools.TinyTcp
         /// Invokes the DataReceived event.
         /// </summary>
         /// <param name="e"></param>
-        protected virtual void OnDataReceived(TcpDataReceivedEventArgs e)
+        protected virtual void OnDataReceived(TcpDataEventArgs e)
         {
             onDataReceived?.Invoke(this, e);
         }
 
 
-        private event EventHandler<EventArgs> onClientLost;
+        private event EventHandler<TcpDataEventArgs> onDataDropped;
         /// <summary>
         /// Raised when the TcpClient in the ClientCallback method is null.
         /// </summary>
-        public event EventHandler<EventArgs> ClientLost
+        public event EventHandler<TcpDataEventArgs> DataDropped
         {
             add {
-                onClientLost += value;
+                onDataDropped += value;
             }
             remove {
-                onClientLost -= value;
+                onDataDropped -= value;
             }
         }
 
         /// <summary>
-        /// Invokes the ClientLost event.
+        /// Invokes the DataDropped event.
         /// </summary>
         /// <param name="e"></param>
-        protected virtual void OnClientLost(EventArgs e)
+        protected virtual void OnDataDropped(TcpDataEventArgs e)
         {
-            onClientLost?.Invoke(this, e);
+            onDataDropped?.Invoke(this, e);
         }
 
 
@@ -103,6 +103,9 @@ namespace Petersilie.ManagementTools.TinyTcp
 
 
         private event EventHandler<EventArgs> onDisposed;
+        /// <summary>
+        /// Raised when the server is disposed.
+        /// </summary>
         public event EventHandler<EventArgs> Disposed
         {
             add {
@@ -113,73 +116,93 @@ namespace Petersilie.ManagementTools.TinyTcp
             }
         }
 
-
+        /// <summary>
+        /// Invokes the Disposed event.
+        /// </summary>
+        /// <param name="e"></param>
         protected virtual void OnDisposed(EventArgs e)
         {
             onDisposed?.Invoke(this, e);
         }
 
 
-        /// <summary>
-        /// Callback to receive client packages.
-        /// </summary>
-        /// <param name="obj">Connected TcpClient</param>
-        /// <exception cref="ArgumentNullException">Buffer error</exception>
-        /// <exception cref="ArgumentOutOfRangeException">
-        /// Buffer offset error</exception>
-        /// <exception cref="System.IO.IOException">
-        /// Socket exception</exception>
-        /// <exception cref="ObjectDisposedException">
-        /// Clients NetworkStream was closed while reading it.</exception>
-        /// <exception cref="InvalidOperationException">
-        /// Client NetworkStream does not support read operations.</exception>
-        protected virtual void ClientCallback(object obj)
-        {
-            TcpClient client = (TcpClient)obj;
-            if (null == client) {
-                OnClientLost(EventArgs.Empty);
-                return;
-            }
+        private ManualResetEvent _waiter = new ManualResetEvent(false);
 
-            NetworkStream stream = client.GetStream();
-            if (null == stream) {
+        private void EndAcceptClient(IAsyncResult ar)
+        {
+            // Stores Exception that might occur.
+            Exception ex = null;
+
+            CallbackStateObject stateObj = ar.AsyncState as CallbackStateObject;
+            if (null == stateObj) {
+                ex = new ArgumentNullException(nameof(ar.AsyncState));
+                stateObj = new CallbackStateObject(_tinyServer, null);
+                OnDataDropped(new TcpDataEventArgs(stateObj, ex));
                 return;
-            }
-            
+            } /* Invalid CallbackStateObject. */            
+
             try
             {
+                // Get TcpClient from state object.
+                TcpClient client = stateObj.Server.EndAcceptTcpClient(ar);
+                if (null == client) {
+                    ex = new ArgumentNullException(nameof(client));
+                    OnDataDropped(new TcpDataEventArgs(stateObj, ex));
+                    return;
+                } /* Invalid TcpClient object. */
+
+                NetworkStream stream = client.GetStream();
+                if (null == stream) {
+                    stateObj.Client = client;
+                    ex = new ArgumentNullException(nameof(stream));                    
+                    OnDataDropped(new TcpDataEventArgs(stateObj, ex));
+                    return;
+                } /* No data. */                
+
+                // Assign buffer for TCP data.
                 byte[] buffer = new byte[0x0100];
+                // Begin reading the NetworkStream.
                 int length = stream.Read(buffer, 0, buffer.Length);
 
                 while (0 != length) {
-                    OnDataReceived(new TcpDataReceivedEventArgs(buffer, length));
+                    // Notify that data has been received.
+                    OnDataReceived(new TcpDataEventArgs(buffer, length));
+                    // Continue reading stream.
                     length = stream.Read(buffer, 0, buffer.Length);
-                }
+                } /* Loop while stream has data. */
             }            
             catch (ArgumentNullException) {
-                throw new ArgumentNullException(
+                ex = new ArgumentNullException(
                     "Buffer for reading client data is null.");
             }
             catch (ArgumentOutOfRangeException) {
-                throw new ArgumentOutOfRangeException(
+                ex = new ArgumentOutOfRangeException(
                     "Unable to read data at the offset 0.");
             }            
             catch (System.IO.IOException) {
-                throw new System.IO.IOException(
+                ex = new System.IO.IOException(
                     "Error while accessing socket or while trying " +
                     "to read the clients NetworkStream.");
             }
             catch (ObjectDisposedException) {
-                throw new ObjectDisposedException(
+                ex = new ObjectDisposedException(
                     "NetworkStream of client was closed " +
                     "while attempting to read it.");
             }
             catch (InvalidOperationException) {
-                throw new InvalidOperationException(
+                ex = new InvalidOperationException(
                     "NetworkStream of client does " +
                     "not support read operations.");
             }
+            finally
+            {
+                if (null != ex) {
+                    OnDataDropped(new TcpDataEventArgs(stateObj, ex));
+                }
+                _waiter.Set();
+            }
         }
+
 
 
         // Loop for accepting client connections.
@@ -188,10 +211,10 @@ namespace Petersilie.ManagementTools.TinyTcp
             try
             {
                 while (true) {
-                    TcpClient client = _tinyServer.AcceptTcpClient();
-                    var paramThreadStart = new ParameterizedThreadStart(ClientCallback);
-                    Thread callbackThread = new Thread(paramThreadStart);
-                    callbackThread.Start(client);
+                    _waiter.Reset();
+                    var stateObj = new CallbackStateObject(_tinyServer, null);
+                    _tinyServer.BeginAcceptTcpClient(EndAcceptClient, stateObj);
+                    _waiter.WaitOne();
                 } /* Endless loop to connect all clients knocking. */
             }
             catch (SocketException socketEx) {                
@@ -259,6 +282,8 @@ namespace Petersilie.ManagementTools.TinyTcp
         ** 
         ** Return values:
         ** ==============
+        ** 0 - Success.
+        **
         ** 1 - If the port is not larger than 1024 the function returns 1,
         ** indicating that the port in within the well-known port range
         ** and thus invalid for use of internal applications.
@@ -323,14 +348,17 @@ namespace Petersilie.ManagementTools.TinyTcp
         /// on the local host address 127.0.0.1</returns>
         /// <exception cref="Exception">Throws any exception produced
         /// by the TinyServer(string, int) constructor.</exception>
-        public static TinyServer StartLocal()
+        public static TinyTcpServer StartLocal()
         {
-            try {
-                int[] port = PortUtil.GetAvailablePorts(PortRange.PR_46337_46997, true);
-                var server = new TinyServer("127.0.0.1", port[0]);
+            try
+            {
+                int[] port = PortUtil.GetAvailablePorts(
+                    PortRange.PR_46337_46997, 
+                    true);
 
+                var server = new TinyTcpServer("127.0.0.1", port[0]);
                 return server;
-            }            
+            }
             catch (Exception e) {
                 throw new Exception(e.Message);
             }
@@ -354,11 +382,12 @@ namespace Petersilie.ManagementTools.TinyTcp
         /// <exception cref="InvalidOperationException">
         /// Server could not be started.
         /// </exception>
-        public TinyServer(IPEndPoint endpoint)
+        public TinyTcpServer(IPEndPoint endpoint)
         {
             int retVal = 0;
             IPAddress address;
-            if ( !(IPUtil.IsValid(endpoint.Address.ToString(), out address)) ) {
+            string ip = endpoint.Address.ToString();
+            if ( !(IPUtil.IsValid(ip, out address)) ) {
                 throw new ArgumentException(
                     "IP is invalid or not IPv4.", nameof(endpoint));
             }
@@ -403,7 +432,7 @@ namespace Petersilie.ManagementTools.TinyTcp
         /// <exception cref="InvalidOperationException">
         /// Server could not be started.
         /// </exception>
-        public TinyServer(IPAddress ip, int port)
+        public TinyTcpServer(IPAddress ip, int port)
         {
             int retVal = 0;
             IPAddress address;
@@ -451,7 +480,7 @@ namespace Petersilie.ManagementTools.TinyTcp
         /// <exception cref="InvalidOperationException">
         /// Server could not be started.
         /// </exception>
-        public TinyServer(string ip, int port)
+        public TinyTcpServer(string ip, int port)
         {
             int retVal = 0;
             IPAddress address;
@@ -483,8 +512,22 @@ namespace Petersilie.ManagementTools.TinyTcp
         }
 
 
-        ~TinyServer() { Dispose(false); }
-        public void Dispose() { Dispose(true); }
+        /// <summary>
+        /// Destructor.
+        /// </summary>
+        ~TinyTcpServer() {
+            Dispose(false);
+            OnDisposed(EventArgs.Empty);
+        }
+
+        /// <summary>
+        /// Frees all resources.
+        /// </summary>
+        public void Dispose() {
+            Dispose(true);
+            OnDisposed(EventArgs.Empty);
+        }
+
         private void Dispose(bool disposing)
         {
             OnDisposing(EventArgs.Empty);
@@ -499,9 +542,7 @@ namespace Petersilie.ManagementTools.TinyTcp
                     _tinyServer.Stop();
                     _tinyServer = null;
                 } catch { }
-            }
-
-            OnDisposed(EventArgs.Empty);
+            }            
         }
     }
 }
