@@ -1,8 +1,4 @@
 ﻿using System;
-using System.Collections.Generic;
-using System.Linq;
-using System.Text;
-using System.Threading.Tasks;
 using System.Net;
 using System.Net.Sockets;
 
@@ -13,6 +9,8 @@ namespace Petersilie.ManagementTools.TinyTcp
     /// </summary>
     public class TinyTcpClient
     {
+        #region Public properties
+
         /// <summary>
         /// IPv4 address of the server.
         /// </summary>
@@ -22,6 +20,10 @@ namespace Petersilie.ManagementTools.TinyTcp
         /// </summary>
         public int ServerPort { get; }
 
+        #endregion
+
+
+        #region Custom events
 
         private event EventHandler<EventArgs> onConnectionLost;
         /// <summary>
@@ -46,6 +48,10 @@ namespace Petersilie.ManagementTools.TinyTcp
             onConnectionLost?.Invoke(this, e);
         }
 
+        #endregion
+
+
+        #region Client-Server communication
 
         /// <summary>
         /// Sends data to the connected server.
@@ -67,7 +73,6 @@ namespace Petersilie.ManagementTools.TinyTcp
                 } /* Sanity check to make sure we are connected. */
             }
             catch (SocketException e) {
-                Console.WriteLine(e.Message);
                 OnConnectionLost(EventArgs.Empty);
             } /* Client could not connect to server. */
             finally
@@ -89,24 +94,79 @@ namespace Petersilie.ManagementTools.TinyTcp
             }
         }
 
+        #endregion
+
+
+        #region Constructor
 
         /// <summary>
-        /// Initializes a new TinyClient instance for 
+        /// Initializes a new client instance for 
+        /// a client-server communication over TCP.
+        /// </summary>
+        /// <param name="serverEndpoint">The IPv4 address and 
+        /// port of the server</param>
+        /// <exception cref="ArgumentException">
+        /// Invalid IPv4 address</exception>
+        public TinyTcpClient(IPEndPoint serverEndpoint)
+        {
+            IPAddress address = serverEndpoint.Address;
+            if ( !(IPUtil.IsValid(address.ToString(), out address)) ) {
+                throw new ArgumentException(
+                    "Invalid IP or not IPv4.", 
+                    nameof(serverEndpoint));
+            } /* Check if IP is valid and IPv4. */
+
+            ServerAddress = address;
+            ServerPort = serverEndpoint.Port;
+        }
+
+
+        /// <summary>
+        /// Initializes a new client instance for 
+        /// a client-server communication over TCP.
+        /// </summary>
+        /// <param name="serverIp">The IPv4 address of the server.</param>
+        /// <param name="serverPort">The port on which the 
+        /// server ca be reached.</param>
+        /// <exception cref="ArgumentException">
+        /// Invalid IPv4 address</exception>
+        public TinyTcpClient(IPAddress serverIp, int serverPort)
+        {
+            IPAddress address;
+            if ( !(IPUtil.IsValid(serverIp.ToString(), out address)) ) {
+                throw new ArgumentException(
+                    "Invalid IP or not IPv4.", 
+                    nameof(serverIp));
+            } /* Check if IP is valid and IPv4. */
+
+            ServerAddress = address;
+            ServerPort = serverPort;
+        }
+
+
+        /// <summary>
+        /// Initializes a new client instance for 
         /// a client-server communication over TCP.
         /// </summary>
         /// <param name="serverIp">The IPv4 address of the server.</param>
         /// <param name="serverPort">The port on which the 
         /// server can be reached.</param>
+        /// <exception cref="ArgumentException">
+        /// Invalid IPv4 address</exception>
         public TinyTcpClient(string serverIp, int serverPort)
         {
             IPAddress address;
             if ( !(IPUtil.IsValid(serverIp, out address)) ) {
-                throw new ArgumentException("Invalid IP or not IPv4.", nameof(serverIp));
+                throw new ArgumentException(
+                    "Invalid IP or not IPv4.", 
+                    nameof(serverIp));
             } /* Check if IP is valid and IPv4. */
 
             // Set server IP and port.
             ServerAddress = address;
             ServerPort = serverPort;
         }
+
+        #endregion
     }
 }
