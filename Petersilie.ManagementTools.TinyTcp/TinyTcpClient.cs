@@ -72,7 +72,7 @@ namespace Petersilie.ManagementTools.TinyTcp
                     outStream.Write(data, 0, data.Length);
                 } /* Sanity check to make sure we are connected. */
             }
-            catch (SocketException e) {
+            catch (SocketException) {
                 OnConnectionLost(EventArgs.Empty);
             } /* Client could not connect to server. */
             finally
