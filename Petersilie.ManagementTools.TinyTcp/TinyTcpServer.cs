@@ -314,28 +314,31 @@ namespace Petersilie.ManagementTools.TinyTcp
         ** 
         ** Return values:
         ** ==============
-        ** 0 - Success.
+        ** 0 -> Success.
         **
-        ** 1 - If the port is not larger than 1024 the function returns 1,
+        ** 1 -> If the port is not larger than 1024 the function returns 1,
         ** indicating that the port in within the well-known port range
         ** and thus invalid for use of internal applications.
         ** 
-        ** 2 - The port is already beeing used by a other application or 
+        ** 2 -> The port is already beeing used by a other application or 
         ** server instance and cannot be used.
         **
-        ** 3 - Sanity check indicating that still, after all checks the
+        ** 3 -> Sanity check indicating that still, after all checks the
         ** IP or port are invalid.
         **
-        ** 4 + SocketError - TcpListener could not be started.
-        ** The return value is 4 + error code of the caught socket exception.
-        ** To get the underlying socket error code simply subtract 4 from
-        ** the return value of this function.
+        ** 5 + SocketError -> TcpListener could not be started.
+        ** The return value is 5 + error code of the caught socket exception.
+        ** To get the underlying socket error simply subtract 5 from
+        ** the return value of this function. 
+        ** The SocketError enum defines SocketError.SocketError as -1.
+        ** It symbolizes an unkown socket error, due to this value you
+        ** need to check for 4 <= InitServer(IPAddress, int).
         **
         ** Example:
         ** ========
         **  int retVal = InitServer(IPAddress, int);
-        **  if (retVal >= 4) {
-        **      SocketError sErr = retVal - 4;
+        **  if (4 <= retVal) {
+        **      SocketError sErr = retVal - 5;
         **      throw new SocketException(sErr);
         **  }
         */
@@ -364,7 +367,7 @@ namespace Petersilie.ManagementTools.TinyTcp
                 return 3;
             } /* IP or port where out of range. */
             catch (SocketException ex) {
-                return 4 + ex.ErrorCode;
+                return 5 + ex.ErrorCode;
             } /* TcpListener could not be started.*/
 
             // Everything went well.
