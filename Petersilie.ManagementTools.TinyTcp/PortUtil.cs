@@ -26,7 +26,7 @@ namespace Petersilie.ManagementTools.TinyTcp
         ** specified range of ports.
         ** Returns the ports of range 14415 to 14935 as 
         ** default. */
-        private static int[] GetPortRange(PortRange pr)
+        private static int[] GetPorts(PortRange pr)
         {
             switch (pr)
             {
@@ -138,7 +138,7 @@ namespace Petersilie.ManagementTools.TinyTcp
         public static int[] GetAvailablePorts(PortRange pr, bool checkAvailability)
         {
             // Get all ports of that range.
-            int[] ports = GetPortRange(pr);
+            int[] ports = GetPorts(pr);
             List<int> availPorts = new List<int>();
             if (checkAvailability) {
                 for (int i=0; i<ports.Length; i++) {
@@ -165,10 +165,42 @@ namespace Petersilie.ManagementTools.TinyTcp
         /// <returns>Returns an array of ports.</returns>
         public static int[] GetAvailablePorts(PortRange pr)
         {
-            int[] ports = GetPortRange(pr);
+            int[] ports = GetPorts(pr);
             return ports;
         }
 
+
+        /// <summary>
+        /// Gets the first free port within the port range.
+        /// </summary>
+        /// <param name="pr">Enum to specify which range of 
+        /// ports to receive and to check for availability.</param>
+        /// <param name="checkAvailability">TRUE to perform an
+        /// availability check on the ports.</param>
+        /// <returns>Returns the first free port.</returns>
+        public static int GetAvailablePort(PortRange pr, bool checkAvailability)
+        {
+            int[] ports = null;
+            if (checkAvailability) {
+                ports = GetAvailablePorts(pr, true);                
+            } else {
+                ports = GetPorts(pr);
+            }
+            return ports[0];
+        }
+
+
+        /// <summary>
+        /// Gets the first free port within the port range.
+        /// </summary>
+        /// <param name="pr">Enum to specify which range of
+        /// ports to receive.</param>
+        /// <returns>Returns the first free port.</returns>
+        public static int GetAvailablePort(PortRange pr)
+        {
+            int[] ports = GetPorts(pr);
+            return ports[0];
+        }
 
     }
 }
