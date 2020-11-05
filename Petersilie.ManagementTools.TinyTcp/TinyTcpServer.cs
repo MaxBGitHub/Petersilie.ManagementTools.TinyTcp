@@ -27,13 +27,13 @@ namespace Petersilie.ManagementTools.TinyTcp
         #region Private properties
 
         // Listener for receiving data from clients.
-        private TcpListener _tinyServer = null;
+        private TcpListener _listener = null;
 
         // Thread for accepting connections.
         private Thread _acceptLoop = null;
 
         // Syncs the calls to EndAcceptClient(IAsyncResult).
-        private ManualResetEvent _waiter = new ManualResetEvent(false);
+        private ManualResetEvent _waiter;
 
         #endregion
 
@@ -153,7 +153,7 @@ namespace Petersilie.ManagementTools.TinyTcp
             CallbackStateObject stateObj = ar.AsyncState as CallbackStateObject;
             if (null == stateObj) {
                 ex = new ArgumentNullException(nameof(ar.AsyncState));
-                stateObj = new CallbackStateObject(_tinyServer, null);
+                stateObj = new CallbackStateObject(_listener, null);
                 OnDataDropped(new TcpDataEventArgs(stateObj, ex));
                 return;
             } /* Invalid CallbackStateObject. */            
@@ -189,27 +189,19 @@ namespace Petersilie.ManagementTools.TinyTcp
                 } /* Loop while stream has data. */
             }            
             catch (ArgumentNullException) {
-                ex = new ArgumentNullException(
-                    "Buffer for reading client data is null.");
+                ex = new ArgumentNullException(SR.ERROR_BUFFERNULL);
             }
             catch (ArgumentOutOfRangeException) {
-                ex = new ArgumentOutOfRangeException(
-                    "Unable to read data at the offset 0.");
+                ex = new ArgumentOutOfRangeException(SR.ERROR_OFFSETREAD);
             }            
             catch (System.IO.IOException) {
-                ex = new System.IO.IOException(
-                    "Error while accessing socket or while trying " +
-                    "to read the clients NetworkStream.");
+                ex = new System.IO.IOException(SR.ERROR_SOCKETORSTREAM);
             }
             catch (ObjectDisposedException) {
-                ex = new ObjectDisposedException(
-                    "NetworkStream of client was closed " +
-                    "while attempting to read it.");
+                ex = new ObjectDisposedException(SR.ERROR_STREAMCLOSED);
             }
             catch (InvalidOperationException) {
-                ex = new InvalidOperationException(
-                    "NetworkStream of client does " +
-                    "not support read operations.");
+                ex = new InvalidOperationException(SR.ERROR_READNOTSUPPORTED);
             }
             finally
             {
@@ -233,16 +225,16 @@ namespace Petersilie.ManagementTools.TinyTcp
                     // Start polling
                     _waiter.Reset();
                     // Create state object for async callback of client.
-                    var stateObj = new CallbackStateObject(_tinyServer, null);
+                    var stateObj = new CallbackStateObject(_listener, null);
                     // Begin accepting client communication.
-                    _tinyServer.BeginAcceptTcpClient(EndAcceptClient, stateObj);
+                    _listener.BeginAcceptTcpClient(EndAcceptClient, stateObj);
                     // Wait until client is processed.
                     _waiter.WaitOne();
 
                 } /* Endless loop to connect all clients knocking. */
             }
             catch (SocketException socketEx) {                
-                _tinyServer.Stop();
+                _listener.Stop();
                 throw new SocketException(socketEx.ErrorCode);
             }
         }
@@ -263,6 +255,8 @@ namespace Petersilie.ManagementTools.TinyTcp
 
             // Initialize new client accept loop thread.
             _acceptLoop = new Thread(new ThreadStart(AcceptClientLoop));
+            // Init ManualResetEvent.
+            _waiter = new ManualResetEvent(false);
             // Start accepting clients.
             _acceptLoop.Start();
         }
@@ -309,7 +303,7 @@ namespace Petersilie.ManagementTools.TinyTcp
         ** =    InitServer() Function   =
         ** ==============================
         ** 
-        ** Initializes the TinyServer instance and starts it.
+        ** Initializes the server instance and starts it.
         ** Sets IP address and port and checks if port is valid.
         ** 
         ** Return values:
@@ -357,8 +351,8 @@ namespace Petersilie.ManagementTools.TinyTcp
             Port = port;
 
             try {
-                _tinyServer = new TcpListener(IPAddress, Port);
-                _tinyServer.Start();
+                _listener = new TcpListener(IPAddress, Port);
+                _listener.Start();
             } /* try to initializes internal TcpListener and start it. */
             catch (ArgumentNullException) {
                 return 3;
@@ -380,13 +374,13 @@ namespace Petersilie.ManagementTools.TinyTcp
         #region Constructor
 
         /// <summary>
-        /// Creates a new TinyServer instance on local host 127.0.0.1
+        /// Creates a new server instance on local host 127.0.0.1
         /// and a port between 46337 and 46997.
         /// </summary>
-        /// <returns>Returns a TinyServer instance that runs
+        /// <returns>Returns a server instance that runs
         /// on the local host address 127.0.0.1</returns>
         /// <exception cref="Exception">Throws any exception produced
-        /// by the TinyServer(string, int) constructor.</exception>
+        /// by the server(string, int) constructor.</exception>
         public static TinyTcpServer StartLocal()
         {
             try
@@ -405,7 +399,7 @@ namespace Petersilie.ManagementTools.TinyTcp
 
 
         /// <summary>
-        /// Initializes a new TinyServer which listens for TCP packets.
+        /// Initializes a new server which listens for TCP packets.
         /// </summary>
         /// <param name="endpoint">IPEndPoint containg server address 
         /// and port.</param>
@@ -422,13 +416,13 @@ namespace Petersilie.ManagementTools.TinyTcp
         /// Server could not be started.
         /// </exception>
         public TinyTcpServer(IPEndPoint endpoint)
-        {
+        {             
             int retVal = 0;
             IPAddress address;
             string ip = endpoint.Address.ToString();
             if ( !(IPUtil.IsValid(ip, out address)) ) {
                 throw new ArgumentException(
-                    "IP is invalid or not IPv4.", nameof(endpoint));
+                    SR.ERROR_IPINVALID, nameof(endpoint));
             }
             
             // Initialize server and port.
@@ -436,26 +430,22 @@ namespace Petersilie.ManagementTools.TinyTcp
 
             if (1 == retVal) {
                 throw new ArgumentOutOfRangeException(
-                    nameof(endpoint), 
-                    endpoint.Port, 
-                    "Port cannot be between 0 to 1024.");
+                    nameof(endpoint), endpoint.Port, SR.ERROR_WELLKNOWNPORT);
             }
             else if (2 == retVal) {
-                throw new AccessViolationException(
-                    "Specified port is already beeing used.");
+                throw new AccessViolationException(SR.ERROR_USEDPORT);
             }
             else if (3 == retVal) {
-                throw new ArgumentException("Invalid Server parameters.");
+                throw new ArgumentException(SR.ERROR_INVALIDPARAM);
             }
             else if (4 <= retVal) {
-                throw new InvalidOperationException(
-                    "Unable to start server socket.");
+                throw new InvalidOperationException(SR.ERROR_NOSTART);
             }
         }
 
 
         /// <summary>
-        /// Initializes a new TinyServer which listens for TCP packets.
+        /// Initializes a new server which listens for TCP packets.
         /// </summary>
         /// <param name="ip">The IP address to use for the server.</param>
         /// <param name="port">The port on which the server runs.</param>
@@ -476,34 +466,29 @@ namespace Petersilie.ManagementTools.TinyTcp
             int retVal = 0;
             IPAddress address;
             if ( !(IPUtil.IsValid(ip.ToString(), out address)) ) {
-                throw new ArgumentException(
-                    "IP is invalid or not IPv4.", nameof(ip));
+                throw new ArgumentException(SR.ERROR_IPINVALID, nameof(ip));
             }
 
             retVal = InitServer(address, port);
 
             if (1 == retVal) {
                 throw new ArgumentOutOfRangeException(
-                    nameof(port), 
-                    port, 
-                    "Port cannot be between 0 to 1024.");
+                    nameof(port), port, SR.ERROR_WELLKNOWNPORT);
             }
             else if (2 == retVal) {
-                throw new AccessViolationException(
-                    "Specified port is already beeing used.");
+                throw new AccessViolationException(SR.ERROR_USEDPORT);
             }
             else if (3 == retVal) {
-                throw new ArgumentException("Invalid Server parameters.");
+                throw new ArgumentException(SR.ERROR_INVALIDPARAM);
             }
-            else if (4 == retVal) {
-                throw new InvalidOperationException(
-                    "Unable to start server socket.");
+            else if (4 <= retVal) {
+                throw new InvalidOperationException(SR.ERROR_NOSTART);
             }
         }
 
 
         /// <summary>
-        /// Initializes a new TinyServer which listens for TCP packets.
+        /// Initializes a new server which listens for TCP packets.
         /// </summary>
         /// <param name="ip">The IP address to use for the server.</param>
         /// <param name="port">The port on which the server runs.</param>
@@ -524,29 +509,23 @@ namespace Petersilie.ManagementTools.TinyTcp
             int retVal = 0;
             IPAddress address;
             if ( !(IPUtil.IsValid(ip, out address)) ) {
-                throw new ArgumentException(
-                    "IP is invalid or not IPv4.", 
-                    nameof(ip));
+                throw new ArgumentException(SR.ERROR_IPINVALID, nameof(ip));
             }
 
             retVal = InitServer(address, port);
 
             if (1 == retVal) {
                 throw new ArgumentOutOfRangeException(
-                    nameof(port), 
-                    port, 
-                    "Port cannot be between 0 to 1024.");
+                    nameof(port), port, SR.ERROR_WELLKNOWNPORT);
             }
             else if (2 == retVal) {
-                throw new AccessViolationException(
-                    "Specified port is already beeing used.");
+                throw new AccessViolationException(SR.ERROR_USEDPORT);
             }
             else if (3 == retVal) {
-                throw new ArgumentException("Invalid Server parameters.");
+                throw new ArgumentException(SR.ERROR_INVALIDPARAM);
             }
-            else if (4 == retVal) {
-                throw new InvalidOperationException(
-                    "Unable to start server socket.");
+            else if (4 <= retVal) {
+                throw new InvalidOperationException(SR.ERROR_NOSTART);
             }
         }
 
@@ -580,10 +559,10 @@ namespace Petersilie.ManagementTools.TinyTcp
             }
 
             Stop();
-            if (null != _tinyServer) {
+            if (null != _listener) {
                 try {
-                    _tinyServer.Stop();
-                    _tinyServer = null;
+                    _listener.Stop();
+                    _listener = null;
                 } catch { }
             }            
         }

@@ -112,7 +112,7 @@ namespace Petersilie.ManagementTools.TinyTcp
             IPAddress address = serverEndpoint.Address;
             if ( !(IPUtil.IsValid(address.ToString(), out address)) ) {
                 throw new ArgumentException(
-                    "Invalid IP or not IPv4.", 
+                    SR.ERROR_IPINVALID, 
                     nameof(serverEndpoint));
             } /* Check if IP is valid and IPv4. */
 
@@ -135,7 +135,7 @@ namespace Petersilie.ManagementTools.TinyTcp
             IPAddress address;
             if ( !(IPUtil.IsValid(serverIp.ToString(), out address)) ) {
                 throw new ArgumentException(
-                    "Invalid IP or not IPv4.", 
+                    SR.ERROR_IPINVALID, 
                     nameof(serverIp));
             } /* Check if IP is valid and IPv4. */
 
@@ -158,7 +158,7 @@ namespace Petersilie.ManagementTools.TinyTcp
             IPAddress address;
             if ( !(IPUtil.IsValid(serverIp, out address)) ) {
                 throw new ArgumentException(
-                    "Invalid IP or not IPv4.", 
+                    SR.ERROR_IPINVALID, 
                     nameof(serverIp));
             } /* Check if IP is valid and IPv4. */
 
